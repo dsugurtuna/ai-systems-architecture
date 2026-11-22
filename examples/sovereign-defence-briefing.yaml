@@ -1,0 +1,100 @@
+schema_version: "1.0"
+
+# Illustrative workload & cost parameters for architecture comparison (not live vendor quotes).
+workload:
+  id: sovereign-briefing-01
+  title: Sovereign Intelligence Briefing Synthesis
+  domain: Sovereign & Defence Operations
+  monthly_requests: 25000
+  avg_input_tokens: 4500
+  avg_output_tokens: 900
+  data_sensitivity: restricted_sovereign
+  residency: sovereign_vpc
+  action_profile: draft_only
+  p95_latency_sla_ms: 4500
+  human_review_rate: 0.35
+  review_minutes_per_item: 2.0
+  reviewer_hourly_gbp: 65.0
+  rework_cost_per_error_gbp: 140.0
+  baseline_cost_per_task_gbp: 3.20
+
+models:
+  - id: public-frontier-api
+    label: Public Hosted Frontier API
+    deployment_mode: hosted_api
+    residency_supported: [any]
+    zero_data_retention: true
+    input_gbp_per_1m_tokens: 2.50
+    output_gbp_per_1m_tokens: 10.00
+    cache_hit_discount: 0.50
+    fixed_monthly_infra_gbp: 0.0
+    p95_latency_ms: 2100
+    escaped_error_rate: 0.008
+    supports_tool_calling: true
+
+  - id: sovereign-vpc-frontier
+    label: Sovereign VPC Private Frontier Endpoint
+    deployment_mode: private_cloud_endpoint
+    residency_supported: [uk_eu, sovereign_vpc]
+    zero_data_retention: true
+    input_gbp_per_1m_tokens: 3.10
+    output_gbp_per_1m_tokens: 12.00
+    cache_hit_discount: 0.50
+    fixed_monthly_infra_gbp: 2200.0
+    p95_latency_ms: 2400
+    escaped_error_rate: 0.008
+    supports_tool_calling: true
+
+  - id: self-hosted-70b
+    label: Self-Hosted Open-Weights 70B (Dedicated Cluster)
+    deployment_mode: self_hosted_open_weights
+    residency_supported: [uk_eu, sovereign_vpc, air_gapped]
+    zero_data_retention: true
+    input_gbp_per_1m_tokens: 0.25
+    output_gbp_per_1m_tokens: 0.60
+    cache_hit_discount: 0.40
+    fixed_monthly_infra_gbp: 7500.0
+    p95_latency_ms: 1900
+    escaped_error_rate: 0.014
+    supports_tool_calling: true
+
+  - id: self-hosted-8b-fallback
+    label: Self-Hosted Open-Weights 8B (Standby Cluster)
+    deployment_mode: self_hosted_open_weights
+    residency_supported: [uk_eu, sovereign_vpc, air_gapped]
+    zero_data_retention: true
+    input_gbp_per_1m_tokens: 0.10
+    output_gbp_per_1m_tokens: 0.20
+    cache_hit_discount: 0.40
+    fixed_monthly_infra_gbp: 1800.0
+    p95_latency_ms: 900
+    escaped_error_rate: 0.025
+    supports_tool_calling: true
+
+options:
+  - id: opt-public-api
+    name: Public Hosted Frontier (Unconstrained)
+    primary_model: public-frontier-api
+    cache_hit_rate: 0.40
+    notes: Fails sovereign VPC boundary and hosted API prohibition.
+
+  - id: opt-sovereign-endpoint
+    name: Sovereign VPC Private Endpoint + Standby
+    primary_model: sovereign-vpc-frontier
+    fallback_model: self-hosted-8b-fallback
+    cache_hit_rate: 0.45
+    notes: Meets sovereign VPC residency with ZDR and deterministic fallback.
+
+  - id: opt-self-hosted
+    name: Self-Hosted Open-Weights Cluster + Standby
+    primary_model: self-hosted-70b
+    fallback_model: self-hosted-8b-fallback
+    cache_hit_rate: 0.45
+    notes: Air-gap capable open-weights baseline for full sovereign control.
+
+controls:
+  egress_restricted: true
+  audit_log_enabled: true
+  runtime_guardrails: true
+  eval_gate_enabled: true
+  kill_switch_enabled: true

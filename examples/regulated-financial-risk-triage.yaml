@@ -1,0 +1,70 @@
+schema_version: "1.0"
+
+# Illustrative workload & cost parameters for architecture comparison (not live vendor quotes).
+workload:
+  id: risk-triage-02
+  title: Regulated Financial Risk & Compliance Triage
+  domain: Financial Risk & Operations
+  monthly_requests: 120000
+  avg_input_tokens: 4000
+  avg_output_tokens: 700
+  data_sensitivity: confidential
+  residency: uk_eu
+  action_profile: writes_with_approval
+  p95_latency_sla_ms: 2800
+  human_review_rate: 0.10
+  review_minutes_per_item: 1.5
+  reviewer_hourly_gbp: 55.0
+  rework_cost_per_error_gbp: 45.0
+  baseline_cost_per_task_gbp: 0.45
+
+models:
+  - id: uk-frontier-private
+    label: UK/EU Private Frontier Endpoint
+    deployment_mode: private_cloud_endpoint
+    residency_supported: [uk_eu, sovereign_vpc]
+    zero_data_retention: true
+    input_gbp_per_1m_tokens: 2.60
+    output_gbp_per_1m_tokens: 10.50
+    cache_hit_discount: 0.50
+    fixed_monthly_infra_gbp: 0.0
+    p95_latency_ms: 1750
+    escaped_error_rate: 0.004
+    supports_tool_calling: true
+
+  - id: uk-fast-open-weights
+    label: UK Private Open-Weights Triage (32B Dedicated)
+    deployment_mode: self_hosted_open_weights
+    residency_supported: [uk_eu, sovereign_vpc, air_gapped]
+    zero_data_retention: true
+    input_gbp_per_1m_tokens: 0.15
+    output_gbp_per_1m_tokens: 0.40
+    cache_hit_discount: 0.40
+    fixed_monthly_infra_gbp: 900.0
+    p95_latency_ms: 650
+    escaped_error_rate: 0.0042
+    supports_tool_calling: true
+
+options:
+  - id: opt-all-frontier
+    name: All-Frontier Private Endpoint
+    primary_model: uk-frontier-private
+    fallback_model: uk-fast-open-weights
+    cache_hit_rate: 0.50
+    notes: Highest token cost; low error rate.
+
+  - id: opt-tiered-cascade
+    name: Tiered Open-Weights + 15% Frontier Escalation
+    primary_model: uk-fast-open-weights
+    escalation_model: uk-frontier-private
+    escalation_rate: 0.15
+    fallback_model: uk-frontier-private
+    cache_hit_rate: 0.50
+    notes: Routes routine 85% triage to open weights and escalates ambiguous 15% to frontier.
+
+controls:
+  egress_restricted: true
+  audit_log_enabled: true
+  runtime_guardrails: true
+  eval_gate_enabled: true
+  kill_switch_enabled: true

@@ -1,0 +1,64 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ai-systems-architecture"
+version = "0.1.0"
+description = "Sovereign & regulated LLM architecture blueprints, deterministic gate checks, and total-cost-of-ownership routing economics."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Ugur Tuna" }]
+keywords = ["ai-architecture", "sovereign-ai", "llm-routing", "ai-economics", "ai-governance"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Typing :: Typed",
+]
+dependencies = [
+    "pydantic>=2.6,<3",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+    "mypy>=1.10",
+    "types-PyYAML",
+]
+
+[project.scripts]
+aiarch = "ai_systems_arch.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/dsugurtuna/ai-systems-architecture"
+Issues = "https://github.com/dsugurtuna/ai-systems-architecture/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ai_systems_arch"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "C4", "PT"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+plugins = ["pydantic.mypy"]
+files = ["src"]

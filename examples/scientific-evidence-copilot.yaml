@@ -1,0 +1,70 @@
+schema_version: "1.0"
+
+# Illustrative workload & cost parameters demonstrating the hidden human-rework cost trap.
+workload:
+  id: evidence-copilot-03
+  title: Clinical & Scientific Evidence Synthesis Copilot
+  domain: Life Sciences & Research
+  monthly_requests: 15000
+  avg_input_tokens: 6500
+  avg_output_tokens: 1100
+  data_sensitivity: confidential
+  residency: uk_eu
+  action_profile: draft_only
+  p95_latency_sla_ms: 5000
+  human_review_rate: 0.25
+  review_minutes_per_item: 2.5
+  reviewer_hourly_gbp: 70.0
+  rework_cost_per_error_gbp: 160.0
+  baseline_cost_per_task_gbp: 2.80
+
+models:
+  - id: small-cheap-model
+    label: Small Unverified Model (Low Token Cost, High Error)
+    deployment_mode: private_cloud_endpoint
+    residency_supported: [uk_eu]
+    zero_data_retention: true
+    input_gbp_per_1m_tokens: 0.20
+    output_gbp_per_1m_tokens: 0.60
+    cache_hit_discount: 0.30
+    fixed_monthly_infra_gbp: 0.0
+    p95_latency_ms: 900
+    escaped_error_rate: 0.020
+    supports_tool_calling: true
+
+  - id: frontier-verified-model
+    label: Grounded Frontier Model (High Faithfulness)
+    deployment_mode: private_cloud_endpoint
+    residency_supported: [uk_eu, sovereign_vpc]
+    zero_data_retention: true
+    input_gbp_per_1m_tokens: 2.80
+    output_gbp_per_1m_tokens: 11.00
+    cache_hit_discount: 0.50
+    fixed_monthly_infra_gbp: 500.0
+    p95_latency_ms: 2200
+    escaped_error_rate: 0.004
+    supports_tool_calling: true
+
+options:
+  - id: opt-cheap-unverified
+    name: Small Cheap Model Only (Hidden Rework Trap)
+    primary_model: small-cheap-model
+    fallback_model: frontier-verified-model
+    cache_hit_rate: 0.35
+    notes: Cheap inference, but 2.0% escaped error rate wipes out ROI via rework.
+
+  - id: opt-grounded-cascade
+    name: Verified Frontier + Open-Weights Routing
+    primary_model: small-cheap-model
+    escalation_model: frontier-verified-model
+    escalation_rate: 0.70
+    fallback_model: frontier-verified-model
+    cache_hit_rate: 0.45
+    notes: Routes 70% of complex evidence synthesis to grounded frontier reasoning.
+
+controls:
+  egress_restricted: true
+  audit_log_enabled: true
+  runtime_guardrails: true
+  eval_gate_enabled: true
+  kill_switch_enabled: true
