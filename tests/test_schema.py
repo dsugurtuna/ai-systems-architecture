@@ -11,7 +11,7 @@ from tests.conftest import EXAMPLES, sample_blueprint_dict
 
 def test_all_example_blueprints_load_and_validate() -> None:
     files = sorted(EXAMPLES.glob("*.yaml"))
-    assert len(files) == 3
+    assert len(files) == 4
     for path in files:
         bp = load_blueprint(path)
         assert bp.workload.monthly_requests > 0

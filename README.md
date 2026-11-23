@@ -4,16 +4,16 @@
 ![Python 3.11 | 3.12](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue)
 [![Licence: Apache-2.0](https://img.shields.io/badge/licence-Apache--2.0-lightgrey)](LICENSE)
 
-Architectural blueprints, deterministic sovereignty & security gates, executive ADRs, and total-cost-of-ownership (TCO) routing economics for enterprise and sovereign AI deployments.
+Architectural blueprints, deterministic deployment & security gates, executive ADRs, and total-cost-of-ownership (TCO) routing economics for enterprise and regulated AI deployments.
 
 > **Illustrative parameters.** All workloads, token prices, latencies, and error rates in `examples/` are synthetic benchmark assumptions designed to surface architectural trade-offs, not live vendor quotes or production telemetry.
 
 ## The problem
 
-Enterprise and sovereign AI architecture choices routinely go wrong in two predictable ways:
+Enterprise AI architecture choices routinely go wrong in two predictable ways:
 
 1. **Ignoring deployment boundaries until late in delivery.** A design looks cheap and fast on a multi-tenant public API, only to fail residency (`uk_eu`, `sovereign_vpc`, `air_gapped`), zero-data-retention, or failover parity reviews right before go-live.
-2. **Pricing tokens instead of total system economics.** Comparing `£ / 1M tokens` hides the real cost drivers: human verification minutes, downstream rework from escaped errors, dedicated GPU cluster overhead, and fallback resilience.
+2. **Pricing tokens in isolation.** Comparing `£ / 1M tokens` distorts routing decisions in both directions: moderate-volume high-judgement tasks underprice human checking and rework when routed to weaker models, while high-volume structured workloads overpay hosted token fees instead of amortising a dedicated open-weights cluster or tiered cascade.
 
 This package makes those architectural trade-offs explicit, deterministic, and testable in CI.
 
@@ -75,6 +75,8 @@ Real output of `aiarch economics examples/sovereign-defence-briefing.yaml`:
 - **HIGH** `ARCH-RES-001` [opt-public-api] **Model residency does not satisfy workload residency requirement** — Required residency 'sovereign_vpc' is not supported by model(s): public-frontier-api.
 - **WARNING** `ARCH-REL-001` [opt-public-api] **No fallback model configured for high-volume or sovereign workload** — Option 'opt-public-api' has no fallback_model; single-provider or single-cluster outages will interrupt service.
 ```
+
+To see the opposite regime, run `aiarch economics examples/high-volume-document-triage.yaml` (`450,000` req/mo) or `aiarch compare examples/`: once throughput amortises dedicated cluster spend and task evaluation confirms quality parity, `self_hosted_open_weights` wins on both monthly TCO (`£42,012.50` vs `£43,286.90`) and p95 latency (`480 ms` vs `1,350 ms`). `regulated-financial-risk-triage.yaml` illustrates the hybrid middle ground where an 85/15 open-weights-to-frontier cascade wins.
 
 ## Deterministic architecture gates
 

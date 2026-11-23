@@ -1,0 +1,68 @@
+schema_version: "1.0"
+
+# Illustrative workload & cost parameters demonstrating the high-volume open-weights crossover regime.
+workload:
+  id: high-vol-doc-triage-04
+  title: High-Volume Regulated Document Triage & Extraction
+  domain: Operations & Compliance Classification
+  monthly_requests: 450000
+  avg_input_tokens: 1800
+  avg_output_tokens: 250
+  data_sensitivity: confidential
+  residency: uk_eu
+  action_profile: draft_only
+  p95_latency_sla_ms: 1500
+  human_review_rate: 0.05
+  review_minutes_per_item: 0.75
+  reviewer_hourly_gbp: 42.0
+  rework_cost_per_error_gbp: 20.0
+  baseline_cost_per_task_gbp: 0.16
+
+models:
+  - id: uk-private-frontier
+    label: UK Private Cloud Frontier Endpoint
+    deployment_mode: private_cloud_endpoint
+    residency_supported: [uk_eu, sovereign_vpc]
+    zero_data_retention: true
+    input_gbp_per_1m_tokens: 2.80
+    output_gbp_per_1m_tokens: 11.20
+    cache_hit_discount: 0.50
+    fixed_monthly_infra_gbp: 0.0
+    p95_latency_ms: 1350
+    escaped_error_rate: 0.0028
+    supports_tool_calling: true
+
+  - id: uk-open-weights-cluster
+    label: UK Self-Hosted Open-Weights Cluster (Quantized 32B)
+    deployment_mode: self_hosted_open_weights
+    residency_supported: [uk_eu, sovereign_vpc, air_gapped]
+    zero_data_retention: true
+    input_gbp_per_1m_tokens: 0.0
+    output_gbp_per_1m_tokens: 0.0
+    cache_hit_discount: 0.0
+    fixed_monthly_infra_gbp: 3200.0
+    p95_latency_ms: 480
+    escaped_error_rate: 0.0030
+    supports_tool_calling: true
+
+options:
+  - id: opt-private-frontier
+    name: Private Cloud Frontier API + Open-Weights Fallback
+    primary_model: uk-private-frontier
+    fallback_model: uk-open-weights-cluster
+    cache_hit_rate: 0.40
+    notes: Low fixed overhead, higher variable token spend at 450k req/mo.
+
+  - id: opt-self-hosted-open
+    name: Dedicated Self-Hosted Open-Weights + Private Fallback
+    primary_model: uk-open-weights-cluster
+    fallback_model: uk-private-frontier
+    cache_hit_rate: 0.0
+    notes: Dedicated open-weights cluster amortised over high throughput once task eval confirms parity.
+
+controls:
+  egress_restricted: true
+  audit_log_enabled: true
+  runtime_guardrails: true
+  eval_gate_enabled: true
+  kill_switch_enabled: true
