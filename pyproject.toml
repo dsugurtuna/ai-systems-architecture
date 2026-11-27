@@ -47,6 +47,7 @@ packages = ["src/ai_systems_arch"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]
 addopts = "-q"
 
 [tool.ruff]
@@ -61,4 +62,5 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "C4", "PT"]
 python_version = "3.11"
 strict = true
 plugins = ["pydantic.mypy"]
+mypy_path = "src"
 files = ["src"]

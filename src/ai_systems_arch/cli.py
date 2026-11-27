@@ -9,9 +9,16 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TextIO
 
+import yaml
+
 from .economics import evaluate_blueprint
 from .report import recommend_option, render_json, render_markdown
-from .schema import Severity, load_blueprint
+from .schema import ArchitectureBlueprint, Severity, load_blueprint
+from .sensitivity import (
+    analyze_sensitivity,
+    render_sensitivity_json,
+    render_sensitivity_markdown,
+)
 from .validator import validate_blueprint
 
 
@@ -39,16 +46,31 @@ def build_parser() -> argparse.ArgumentParser:
     p_cmp.add_argument("directory", type=Path)
     p_cmp.add_argument("--format", choices=["md", "json"], default="md")
 
+    p_sen = sub.add_parser(
+        "sensitivity",
+        help="Analyse volume break-even and error-rate tipping points between top options.",
+    )
+    p_sen.add_argument("file", type=Path)
+    p_sen.add_argument("--format", choices=["md", "json"], default="md")
+    p_sen.add_argument("--winner", default=None, help="Option ID to treat as baseline winner.")
+    p_sen.add_argument("--challenger", default=None, help="Option ID to compare against.")
+
     return parser
+
+
+def _load_safe(path: Path, stderr: TextIO, prefix: str = "ERROR") -> ArchitectureBlueprint | None:
+    try:
+        return load_blueprint(path)
+    except (OSError, yaml.YAMLError, ValueError) as exc:
+        print(f"{prefix} {path}: {exc}", file=stderr)
+        return None
 
 
 def _cmd_validate(files: list[Path], stdout: TextIO, stderr: TextIO) -> int:
     had_error = False
     for path in files:
-        try:
-            bp = load_blueprint(path)
-        except Exception as exc:
-            print(f"INVALID {path}: {exc}", file=stderr)
+        bp = _load_safe(path, stderr, prefix="INVALID")
+        if bp is None:
             had_error = True
         else:
             print(
@@ -59,8 +81,10 @@ def _cmd_validate(files: list[Path], stdout: TextIO, stderr: TextIO) -> int:
     return 1 if had_error else 0
 
 
-def _cmd_check(file: Path, fail_on: str | None, stdout: TextIO) -> int:
-    bp = load_blueprint(file)
+def _cmd_check(file: Path, fail_on: str | None, stdout: TextIO, stderr: TextIO) -> int:
+    bp = _load_safe(file, stderr)
+    if bp is None:
+        return 1
     findings = validate_blueprint(bp)
     high_n = sum(1 for f in findings if f.severity == Severity.HIGH)
     warn_n = sum(1 for f in findings if f.severity == Severity.WARNING)
@@ -76,8 +100,10 @@ def _cmd_check(file: Path, fail_on: str | None, stdout: TextIO) -> int:
     return 0
 
 
-def _cmd_economics(file: Path, fmt: str, stdout: TextIO) -> int:
-    bp = load_blueprint(file)
+def _cmd_economics(file: Path, fmt: str, stdout: TextIO, stderr: TextIO) -> int:
+    bp = _load_safe(file, stderr)
+    if bp is None:
+        return 1
     economics = evaluate_blueprint(bp)
     findings = validate_blueprint(bp)
     if fmt == "json":
@@ -87,14 +113,20 @@ def _cmd_economics(file: Path, fmt: str, stdout: TextIO) -> int:
     return 0
 
 
-def _cmd_compare(directory: Path, fmt: str, stdout: TextIO) -> int:
+def _cmd_compare(directory: Path, fmt: str, stdout: TextIO, stderr: TextIO) -> int:
+    if not directory.is_dir():
+        print(f"ERROR {directory}: directory does not exist", file=stderr)
+        return 1
     files = sorted([*directory.glob("*.yaml"), *directory.glob("*.yml")])
     if not files:
-        raise FileNotFoundError(f"no .yaml or .yml blueprints found in {directory}")
+        print(f"ERROR {directory}: no .yaml or .yml blueprints found", file=stderr)
+        return 1
 
     rows: list[dict[str, object]] = []
     for path in files:
-        bp = load_blueprint(path)
+        bp = _load_safe(path, stderr)
+        if bp is None:
+            return 1
         economics = evaluate_blueprint(bp)
         findings = validate_blueprint(bp)
         best = recommend_option(economics, findings)
@@ -139,6 +171,30 @@ def _cmd_compare(directory: Path, fmt: str, stdout: TextIO) -> int:
     return 0
 
 
+def _cmd_sensitivity(
+    file: Path,
+    fmt: str,
+    winner: str | None,
+    challenger: str | None,
+    stdout: TextIO,
+    stderr: TextIO,
+) -> int:
+    bp = _load_safe(file, stderr)
+    if bp is None:
+        return 1
+    try:
+        report = analyze_sensitivity(bp, winner_id=winner, challenger_id=challenger)
+    except ValueError as exc:
+        print(f"ERROR {file}: {exc}", file=stderr)
+        return 1
+
+    if fmt == "json":
+        stdout.write(render_sensitivity_json(report))
+    else:
+        stdout.write(render_sensitivity_markdown(report))
+    return 0
+
+
 def main(
     argv: Sequence[str] | None = None,
     stdout: TextIO | None = None,
@@ -152,11 +208,13 @@ def main(
     if args.command == "validate":
         return _cmd_validate(args.files, out, err)
     if args.command == "check":
-        return _cmd_check(args.file, args.fail_on, out)
+        return _cmd_check(args.file, args.fail_on, out, err)
     if args.command == "economics":
-        return _cmd_economics(args.file, args.format, out)
+        return _cmd_economics(args.file, args.format, out, err)
     if args.command == "compare":
-        return _cmd_compare(args.directory, args.format, out)
+        return _cmd_compare(args.directory, args.format, out, err)
+    if args.command == "sensitivity":
+        return _cmd_sensitivity(args.file, args.format, args.winner, args.challenger, out, err)
     return 2
 
 

@@ -28,9 +28,12 @@ models:
     output_gbp_per_1m_tokens: 0.60
     cache_hit_discount: 0.30
     fixed_monthly_infra_gbp: 0.0
+    standby_monthly_infra_gbp: 0.0
     p95_latency_ms: 900
     escaped_error_rate: 0.020
     supports_tool_calling: true
+    review_rate_multiplier: 1.35
+    review_minutes_per_item: 3.0
 
   - id: frontier-verified-model
     label: Grounded Frontier Model (High Faithfulness)
@@ -41,7 +44,24 @@ models:
     output_gbp_per_1m_tokens: 11.00
     cache_hit_discount: 0.50
     fixed_monthly_infra_gbp: 500.0
+    standby_monthly_infra_gbp: 0.0
+    ops_monthly_gbp: 150.0
     p95_latency_ms: 2200
+    escaped_error_rate: 0.004
+    supports_tool_calling: true
+    review_rate_multiplier: 1.0
+
+  - id: frontier-verified-dr
+    label: Grounded Frontier Model (DR Region Fallback)
+    deployment_mode: private_cloud_endpoint
+    residency_supported: [uk_eu, sovereign_vpc]
+    zero_data_retention: true
+    input_gbp_per_1m_tokens: 2.80
+    output_gbp_per_1m_tokens: 11.00
+    cache_hit_discount: 0.50
+    fixed_monthly_infra_gbp: 0.0
+    standby_monthly_infra_gbp: 0.0
+    p95_latency_ms: 2400
     escaped_error_rate: 0.004
     supports_tool_calling: true
 
@@ -49,18 +69,19 @@ options:
   - id: opt-cheap-unverified
     name: Small Cheap Model Only (Hidden Rework Trap)
     primary_model: small-cheap-model
-    fallback_model: frontier-verified-model
+    fallback_model: frontier-verified-dr
     cache_hit_rate: 0.35
-    notes: Cheap inference, but 2.0% escaped error rate wipes out ROI via rework.
+    notes: Dirt-cheap token spend, yet extra human verification plus 2.0% escaped errors destroy net ROI.
 
   - id: opt-grounded-cascade
-    name: Verified Frontier + Open-Weights Routing
+    name: Grounded Frontier Pre-Router (30% Routine / 70% Frontier)
     primary_model: small-cheap-model
     escalation_model: frontier-verified-model
     escalation_rate: 0.70
+    routing_mode: pre_router
     fallback_model: frontier-verified-model
     cache_hit_rate: 0.45
-    notes: Routes 70% of complex evidence synthesis to grounded frontier reasoning.
+    notes: Routes 70% of complex evidence synthesis upfront to grounded frontier reasoning.
 
 controls:
   egress_restricted: true
@@ -68,3 +89,6 @@ controls:
   runtime_guardrails: true
   eval_gate_enabled: true
   kill_switch_enabled: true
+  cmk_encryption: true
+  workload_identity_rbac: true
+  pii_redaction_proxy: true

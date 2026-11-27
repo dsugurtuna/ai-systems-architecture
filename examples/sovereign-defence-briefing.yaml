@@ -41,9 +41,11 @@ models:
     output_gbp_per_1m_tokens: 12.00
     cache_hit_discount: 0.50
     fixed_monthly_infra_gbp: 2200.0
+    ops_monthly_gbp: 250.0
     p95_latency_ms: 2400
     escaped_error_rate: 0.008
     supports_tool_calling: true
+    review_rate_multiplier: 1.0
 
   - id: self-hosted-70b
     label: Self-Hosted Open-Weights 70B (Dedicated Cluster)
@@ -54,9 +56,12 @@ models:
     output_gbp_per_1m_tokens: 0.60
     cache_hit_discount: 0.40
     fixed_monthly_infra_gbp: 7500.0
+    ops_monthly_gbp: 900.0
+    max_monthly_tokens: 500000000
     p95_latency_ms: 1900
     escaped_error_rate: 0.014
     supports_tool_calling: true
+    review_rate_multiplier: 1.25
 
   - id: self-hosted-8b-fallback
     label: Self-Hosted Open-Weights 8B (Standby Cluster)
@@ -67,6 +72,9 @@ models:
     output_gbp_per_1m_tokens: 0.20
     cache_hit_discount: 0.40
     fixed_monthly_infra_gbp: 1800.0
+    standby_monthly_infra_gbp: 1800.0
+    ops_monthly_gbp: 300.0
+    max_monthly_tokens: 500000000
     p95_latency_ms: 900
     escaped_error_rate: 0.025
     supports_tool_calling: true
@@ -83,14 +91,14 @@ options:
     primary_model: sovereign-vpc-frontier
     fallback_model: self-hosted-8b-fallback
     cache_hit_rate: 0.45
-    notes: Meets sovereign VPC residency with ZDR and deterministic fallback.
+    notes: Meets sovereign VPC residency with ZDR and warm sovereign standby fallback.
 
   - id: opt-self-hosted
     name: Self-Hosted Open-Weights Cluster + Standby
     primary_model: self-hosted-70b
     fallback_model: self-hosted-8b-fallback
     cache_hit_rate: 0.45
-    notes: Air-gap capable open-weights baseline for full sovereign control.
+    notes: Air-gap capable open-weights baseline; higher error rate increases human review and rework.
 
 controls:
   egress_restricted: true
@@ -98,3 +106,7 @@ controls:
   runtime_guardrails: true
   eval_gate_enabled: true
   kill_switch_enabled: true
+  cmk_encryption: true
+  workload_identity_rbac: true
+  pii_redaction_proxy: true
+  signed_artifact_provenance: true

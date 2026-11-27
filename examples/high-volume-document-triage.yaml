@@ -5,13 +5,13 @@ workload:
   id: high-vol-doc-triage-04
   title: High-Volume Regulated Document Triage & Extraction
   domain: Operations & Compliance Classification
-  monthly_requests: 450000
+  monthly_requests: 1600000
   avg_input_tokens: 1800
   avg_output_tokens: 250
   data_sensitivity: confidential
   residency: uk_eu
   action_profile: draft_only
-  p95_latency_sla_ms: 1500
+  p95_latency_sla_ms: 1600
   human_review_rate: 0.05
   review_minutes_per_item: 0.75
   reviewer_hourly_gbp: 42.0
@@ -28,37 +28,56 @@ models:
     output_gbp_per_1m_tokens: 11.20
     cache_hit_discount: 0.50
     fixed_monthly_infra_gbp: 0.0
+    standby_monthly_infra_gbp: 0.0
+    ops_monthly_gbp: 250.0
     p95_latency_ms: 1350
     escaped_error_rate: 0.0028
     supports_tool_calling: true
 
+  - id: uk-private-frontier-dr
+    label: UK Private Cloud Frontier Endpoint (DR Region)
+    deployment_mode: private_cloud_endpoint
+    residency_supported: [uk_eu, sovereign_vpc]
+    zero_data_retention: true
+    input_gbp_per_1m_tokens: 2.80
+    output_gbp_per_1m_tokens: 11.20
+    cache_hit_discount: 0.50
+    fixed_monthly_infra_gbp: 0.0
+    standby_monthly_infra_gbp: 0.0
+    p95_latency_ms: 1550
+    escaped_error_rate: 0.0028
+    supports_tool_calling: true
+
   - id: uk-open-weights-cluster
-    label: UK Self-Hosted Open-Weights Cluster (Quantized 32B)
+    label: UK Self-Hosted Open-Weights Cluster (Multi-AZ 32B HA)
     deployment_mode: self_hosted_open_weights
     residency_supported: [uk_eu, sovereign_vpc, air_gapped]
     zero_data_retention: true
     input_gbp_per_1m_tokens: 0.0
     output_gbp_per_1m_tokens: 0.0
     cache_hit_discount: 0.0
-    fixed_monthly_infra_gbp: 3200.0
+    fixed_monthly_infra_gbp: 4800.0
+    standby_monthly_infra_gbp: 0.0
+    ops_monthly_gbp: 1500.0
+    max_monthly_tokens: 4500000000
     p95_latency_ms: 480
-    escaped_error_rate: 0.0030
+    escaped_error_rate: 0.0028
     supports_tool_calling: true
 
 options:
   - id: opt-private-frontier
-    name: Private Cloud Frontier API + Open-Weights Fallback
+    name: Private Cloud Frontier API + DR Region Fallback
     primary_model: uk-private-frontier
-    fallback_model: uk-open-weights-cluster
+    fallback_model: uk-private-frontier-dr
     cache_hit_rate: 0.40
-    notes: Low fixed overhead, higher variable token spend at 450k req/mo.
+    notes: Pay-per-token elastic cloud routing with zero idle GPU penalty; variable token spend dominates above 885k req/mo.
 
   - id: opt-self-hosted-open
-    name: Dedicated Self-Hosted Open-Weights + Private Fallback
+    name: Dedicated Multi-AZ Open-Weights + Private Fallback
     primary_model: uk-open-weights-cluster
     fallback_model: uk-private-frontier
     cache_hit_rate: 0.0
-    notes: Dedicated open-weights cluster amortised over high throughput once task eval confirms parity.
+    notes: Multi-AZ GPU cluster + MLOps amortised over 1.6M req/mo once eval gates confirm structured-triage parity.
 
 controls:
   egress_restricted: true
@@ -66,3 +85,7 @@ controls:
   runtime_guardrails: true
   eval_gate_enabled: true
   kill_switch_enabled: true
+  cmk_encryption: true
+  workload_identity_rbac: true
+  pii_redaction_proxy: true
+  signed_artifact_provenance: true

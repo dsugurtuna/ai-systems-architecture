@@ -1,10 +1,10 @@
-"""Deterministic architecture, sovereignty, security, and ROI gates."""
+"""Deterministic architecture, sovereignty, capability, security, and ROI gates."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .economics import OptionEconomics, evaluate_option
+from .economics import OptionEconomics, evaluate_option, option_routed_tokens
 from .schema import (
     ActionProfile,
     ArchitectureBlueprint,
@@ -89,6 +89,32 @@ def _validate_blueprint_controls(blueprint: ArchitectureBlueprint) -> list[Findi
             )
         )
 
+    if w.data_sensitivity in (
+        DataSensitivity.CONFIDENTIAL,
+        DataSensitivity.RESTRICTED_SOVEREIGN,
+    ):
+        disabled_posture = [
+            name
+            for name, flag in (
+                ("cmk_encryption", c.cmk_encryption),
+                ("workload_identity_rbac", c.workload_identity_rbac),
+                ("pii_redaction_proxy", c.pii_redaction_proxy),
+            )
+            if flag is False
+        ]
+        if disabled_posture:
+            findings.append(
+                Finding(
+                    rule_id="ARCH-SEC-003",
+                    severity=Severity.HIGH,
+                    title="Sensitive workload declares disabled platform security boundary",
+                    detail=(
+                        f"Sensitivity '{w.data_sensitivity.value}' cannot disable declared "
+                        f"boundary controls: {', '.join(disabled_posture)}."
+                    ),
+                )
+            )
+
     if not c.eval_gate_enabled:
         findings.append(
             Finding(
@@ -109,11 +135,18 @@ def _validate_option(
 ) -> list[Finding]:
     findings: list[Finding] = []
     w = blueprint.workload
+    c = blueprint.controls
+    models = blueprint.model_map()
     participating = _option_models(blueprint, option)
 
-    # ARCH-SOV-001: restricted_sovereign data or air_gapped residency routed to hosted_api
-    if w.data_sensitivity == DataSensitivity.RESTRICTED_SOVEREIGN or (
-        w.residency == ResidencyRequirement.AIR_GAPPED
+    # ARCH-SOV-001: ADR-001 permits hosted_api only for public/internal workloads (non-air_gapped)
+    if (
+        w.data_sensitivity
+        in (
+            DataSensitivity.CONFIDENTIAL,
+            DataSensitivity.RESTRICTED_SOVEREIGN,
+        )
+        or w.residency == ResidencyRequirement.AIR_GAPPED
     ):
         hosted = [m.id for m in participating if m.deployment_mode == DeploymentMode.HOSTED_API]
         if hosted:
@@ -122,10 +155,11 @@ def _validate_option(
                     rule_id="ARCH-SOV-001",
                     severity=Severity.HIGH,
                     option_id=option.id,
-                    title="Sovereign or air-gapped workload routed via public hosted API",
+                    title="Confidential, sovereign, or air-gapped workload routed via hosted API",
                     detail=(
                         f"Option '{option.id}' includes hosted_api model(s) {', '.join(hosted)}, "
-                        "violating sovereign/air-gapped isolation."
+                        f"violating ADR-001 boundary for '{w.data_sensitivity.value}' / "
+                        f"'{w.residency.value}'."
                     ),
                 )
             )
@@ -168,11 +202,8 @@ def _validate_option(
                 )
             )
 
-    # ARCH-RET-001: zero data retention for confidential / restricted_sovereign
-    if w.data_sensitivity in (
-        DataSensitivity.CONFIDENTIAL,
-        DataSensitivity.RESTRICTED_SOVEREIGN,
-    ):
+    # ARCH-RET-001: ADR-001 requires zero data retention on all non-public workloads
+    if w.data_sensitivity != DataSensitivity.PUBLIC:
         non_zdr = [m.id for m in participating if not m.zero_data_retention]
         if non_zdr:
             findings.append(
@@ -180,13 +211,74 @@ def _validate_option(
                     rule_id="ARCH-RET-001",
                     severity=Severity.HIGH,
                     option_id=option.id,
-                    title="Sensitive workload routed to model without zero data retention",
+                    title="Non-public workload routed to model without zero data retention",
                     detail=(
                         f"Sensitivity '{w.data_sensitivity.value}' requires "
-                        f"zero_data_retention=true; not guaranteed on: {', '.join(non_zdr)}."
+                        f"zero_data_retention=true per ADR-001; not guaranteed on: "
+                        f"{', '.join(non_zdr)}."
                     ),
                 )
             )
+
+    # ARCH-CAP-001: tool-calling capability required across all tiers for state-changing agents
+    if w.action_profile in (ActionProfile.WRITES_WITH_APPROVAL, ActionProfile.AUTONOMOUS):
+        non_tool = [m.id for m in participating if not m.supports_tool_calling]
+        if non_tool:
+            findings.append(
+                Finding(
+                    rule_id="ARCH-CAP-001",
+                    severity=Severity.HIGH,
+                    option_id=option.id,
+                    title="State-changing workload routed to model without tool calling",
+                    detail=(
+                        f"Action profile '{w.action_profile.value}' requires "
+                        f"supports_tool_calling=true across primary/escalation/fallback; "
+                        f"unsupported by: {', '.join(non_tool)}."
+                    ),
+                )
+            )
+
+    # ARCH-SEC-003 (per-option provenance): self-hosted weights must not disable signed provenance
+    if c.signed_artifact_provenance is False:
+        self_hosted = [
+            m.id
+            for m in participating
+            if m.deployment_mode == DeploymentMode.SELF_HOSTED_OPEN_WEIGHTS
+        ]
+        if self_hosted:
+            findings.append(
+                Finding(
+                    rule_id="ARCH-SEC-003",
+                    severity=Severity.HIGH,
+                    option_id=option.id,
+                    title="Self-hosted open-weights deployment lacks signed artifact provenance",
+                    detail=(
+                        f"Option '{option.id}' deploys self-hosted model(s) "
+                        f"{', '.join(self_hosted)} while signed_artifact_provenance=false."
+                    ),
+                )
+            )
+
+    # ARCH-CAP-002: monthly token capacity ceiling check on active models
+    routed_tokens = option_routed_tokens(blueprint, option)
+    over_capacity: list[str] = []
+    for model_id, used_tokens in routed_tokens.items():
+        cap = models[model_id].max_monthly_tokens
+        if cap is not None and used_tokens > cap:
+            over_capacity.append(f"{model_id} ({used_tokens:,} > {cap:,} tokens/mo)")
+    if over_capacity:
+        findings.append(
+            Finding(
+                rule_id="ARCH-CAP-002",
+                severity=Severity.WARNING,
+                option_id=option.id,
+                title="Workload token volume exceeds declared cluster capacity",
+                detail=(
+                    f"Option '{option.id}' exceeds max_monthly_tokens on: "
+                    f"{', '.join(over_capacity)}; scale replicas or route overflow."
+                ),
+            )
+        )
 
     # ARCH-LAT-001: p95 latency SLA
     if econ.p95_latency_ms > w.p95_latency_sla_ms:
@@ -240,7 +332,7 @@ def _validate_option(
 
 
 def validate_blueprint(blueprint: ArchitectureBlueprint) -> list[Finding]:
-    """Run all deterministic architecture, sovereignty, security, and ROI checks."""
+    """Run all deterministic architecture, sovereignty, capability, security, and ROI checks."""
     findings = _validate_blueprint_controls(blueprint)
     for option in blueprint.options:
         econ = evaluate_option(blueprint, option)

@@ -27,6 +27,29 @@ def recommend_option(
     return min(eligible, key=lambda e: e.total_monthly_gbp)
 
 
+def _format_gate_label(
+    high_n: int,
+    warn_n: int,
+    global_high_n: int,
+    global_warn_n: int,
+) -> str:
+    if high_n > 0 and global_high_n > 0:
+        return f"BLOCKED ({high_n} high, {global_high_n} blueprint, {warn_n} warn)"
+    if high_n > 0:
+        return f"BLOCKED ({high_n} high, {warn_n} warn)"
+    if global_high_n > 0:
+        if warn_n > 0:
+            return f"BLOCKED (blueprint gate, {warn_n} warn)"
+        return "BLOCKED (blueprint gate)"
+    if warn_n > 0 and global_warn_n > 0:
+        return f"PASS ({warn_n} warn, {global_warn_n} blueprint)"
+    if warn_n > 0:
+        return f"PASS ({warn_n} warn)"
+    if global_warn_n > 0:
+        return f"PASS ({global_warn_n} blueprint warn)"
+    return "PASS"
+
+
 def render_markdown(
     blueprint: ArchitectureBlueprint,
     economics: list[OptionEconomics],
@@ -34,7 +57,10 @@ def render_markdown(
 ) -> str:
     """Render an executive trade-off and architecture gate brief in Markdown."""
     w = blueprint.workload
-    global_high = any(f.option_id is None and f.severity == Severity.HIGH for f in findings)
+    global_high_n = sum(1 for f in findings if f.option_id is None and f.severity == Severity.HIGH)
+    global_warn_n = sum(
+        1 for f in findings if f.option_id is None and f.severity == Severity.WARNING
+    )
 
     lines: list[str] = [
         f"# Architecture Brief: {w.title}",
@@ -58,12 +84,7 @@ def render_markdown(
         opt_findings = [f for f in findings if f.option_id == e.option_id]
         high_n = sum(1 for f in opt_findings if f.severity == Severity.HIGH)
         warn_n = sum(1 for f in opt_findings if f.severity == Severity.WARNING)
-        if global_high or high_n > 0:
-            gate_label = f"BLOCKED ({high_n} high, {warn_n} warn)"
-        elif warn_n > 0:
-            gate_label = f"PASS ({warn_n} warn)"
-        else:
-            gate_label = "PASS"
+        gate_label = _format_gate_label(high_n, warn_n, global_high_n, global_warn_n)
         review_rework = e.human_review_gbp + e.rework_gbp
         lines.append(
             f"| {e.option_name} | `{e.deployment_summary}` | "
@@ -81,10 +102,15 @@ def render_markdown(
             f"inference {best.inference_share_pct:.1f}% vs "
             f"human effort {best.human_effort_share_pct:.1f}%)."
         )
+    elif global_high_n > 0:
+        lines.append(
+            "**Recommendation:** Blocked — blueprint-level security and governance controls "
+            "fail high-severity gates."
+        )
     else:
         lines.append(
             "**Recommendation:** Blocked — no candidate option clears all high-severity "
-            "sovereignty, retention, and security gates."
+            "sovereignty, retention, and capability gates."
         )
 
     if findings:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -38,6 +40,13 @@ def test_rejects_duplicate_model_ids() -> None:
         ArchitectureBlueprint.model_validate(raw)
 
 
+def test_rejects_duplicate_option_ids() -> None:
+    raw = sample_blueprint_dict()
+    raw["options"].append(dict(raw["options"][0]))
+    with pytest.raises(ValidationError, match="duplicate option id"):
+        ArchitectureBlueprint.model_validate(raw)
+
+
 def test_rejects_escalation_rate_mismatch() -> None:
     raw = sample_blueprint_dict()
     raw["options"][0]["escalation_rate"] = 0.2
@@ -49,3 +58,25 @@ def test_rejects_escalation_rate_mismatch() -> None:
     raw2["options"][0]["escalation_rate"] = 0.0
     with pytest.raises(ValidationError, match=r"escalation_rate must be > 0\.0"):
         ArchitectureBlueprint.model_validate(raw2)
+
+
+def test_rejects_fallback_equal_to_primary() -> None:
+    raw = sample_blueprint_dict()
+    raw["options"][0]["fallback_model"] = "m-primary"
+    with pytest.raises(ValidationError, match="fallback_model must differ from primary_model"):
+        ArchitectureBlueprint.model_validate(raw)
+
+
+def test_rejects_escalation_equal_to_primary() -> None:
+    raw = sample_blueprint_dict()
+    raw["options"][0]["escalation_model"] = "m-primary"
+    raw["options"][0]["escalation_rate"] = 0.2
+    with pytest.raises(ValidationError, match="escalation_model must differ from primary_model"):
+        ArchitectureBlueprint.model_validate(raw)
+
+
+def test_load_blueprint_rejects_non_mapping_yaml(tmp_path: Path) -> None:
+    bad = tmp_path / "list.yaml"
+    bad.write_text("- item1\n- item2\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="expected a YAML mapping"):
+        load_blueprint(bad)

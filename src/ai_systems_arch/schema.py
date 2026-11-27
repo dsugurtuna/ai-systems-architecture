@@ -37,6 +37,11 @@ class ActionProfile(StrEnum):
     AUTONOMOUS = "autonomous"
 
 
+class RoutingMode(StrEnum):
+    PRE_ROUTER = "pre_router"
+    SEQUENTIAL_CASCADE = "sequential_cascade"
+
+
 class Severity(StrEnum):
     HIGH = "high"
     WARNING = "warning"
@@ -66,7 +71,7 @@ class WorkloadSpec(BaseModel):
 
 
 class ModelProfile(BaseModel):
-    """Hosting, compliance, pricing, latency, and error profile for a candidate model."""
+    """Hosting, compliance, pricing, capacity, latency, and error profile for a model."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -79,9 +84,14 @@ class ModelProfile(BaseModel):
     output_gbp_per_1m_tokens: float = Field(ge=0.0)
     cache_hit_discount: float = Field(default=0.0, ge=0.0, le=1.0)
     fixed_monthly_infra_gbp: float = Field(default=0.0, ge=0.0)
+    standby_monthly_infra_gbp: float = Field(default=0.0, ge=0.0)
+    ops_monthly_gbp: float = Field(default=0.0, ge=0.0)
+    max_monthly_tokens: int | None = Field(default=None, gt=0)
     p95_latency_ms: int = Field(gt=0)
     escaped_error_rate: float = Field(ge=0.0, le=1.0)
     supports_tool_calling: bool = True
+    review_rate_multiplier: float = Field(default=1.0, ge=0.0)
+    review_minutes_per_item: float | None = Field(default=None, ge=0.0)
 
 
 class RoutingOption(BaseModel):
@@ -94,16 +104,23 @@ class RoutingOption(BaseModel):
     primary_model: str = Field(min_length=1)
     escalation_model: str | None = None
     escalation_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    routing_mode: RoutingMode = RoutingMode.SEQUENTIAL_CASCADE
     cache_hit_rate: float = Field(default=0.0, ge=0.0, le=1.0)
     fallback_model: str | None = None
+    review_rate_override: float | None = Field(default=None, ge=0.0, le=1.0)
+    review_minutes_per_item: float | None = Field(default=None, ge=0.0)
     notes: str = ""
 
     @model_validator(mode="after")
-    def _validate_escalation_consistency(self) -> RoutingOption:
+    def _validate_routing_consistency(self) -> RoutingOption:
         if self.escalation_model is None and self.escalation_rate != 0.0:
             raise ValueError("escalation_rate must be 0.0 when escalation_model is omitted")
         if self.escalation_model is not None and self.escalation_rate == 0.0:
             raise ValueError("escalation_rate must be > 0.0 when escalation_model is set")
+        if self.escalation_model is not None and self.escalation_model == self.primary_model:
+            raise ValueError("escalation_model must differ from primary_model")
+        if self.fallback_model is not None and self.fallback_model == self.primary_model:
+            raise ValueError("fallback_model must differ from primary_model")
         return self
 
 
@@ -117,6 +134,10 @@ class SecurityControls(BaseModel):
     runtime_guardrails: bool
     eval_gate_enabled: bool
     kill_switch_enabled: bool
+    cmk_encryption: bool | None = None
+    workload_identity_rbac: bool | None = None
+    pii_redaction_proxy: bool | None = None
+    signed_artifact_provenance: bool | None = None
 
 
 class ArchitectureBlueprint(BaseModel):
